@@ -1,0 +1,22 @@
+# Name of your program
+package "RNAlandmap" # don't use package if you're using automake
+purpose "Constructs landmap graph from RNAsubopt -e file (using complete enumeration)"
+
+# Version of your program
+version "0.1"   # don't use version if you're using automake
+
+# command line options passed to gengetopt
+args "--file-name=RNAlandmap_cmdline --include-getopt --default-optional --unamed-opts"
+
+# Options
+option "debug"        			d "Print debug" flag off
+option "print-graph"				- "Generate graph with neato/dot" flag off
+option "name-dot"						- "Filename for dot file(text)" string default="landmap.dot" no
+option "name-graph"					- "Filename for landmap/landmark graph image" string default="landmap.eps" no
+
+option "noLP"								- "Process structures without lonely pairs (helices of length 1)." flag off
+option "shift"							- "Assume also shift moves (in addition to insertion and deletions)." flag off
+
+option "landmark"						l "Generate landmark instead landmap (without saddles)" flag off
+
+option "dot"                - "Use dot instead of neato for graph plotting" flag off
