@@ -541,8 +541,9 @@ int degen_energy;
 set<short*, setcomp> degen_done;
 set<short*, setcomp> degen_undone;
 bool degen_saddle;
+bool direct;
 
-// I dont like it at all, but it easy to code
+// I dont like it at all, but its easy to code
   // global things from RNAlandmap.cpp
 extern set<set<int> > numbers;
 extern set<int> saddles;
@@ -560,18 +561,20 @@ bool equal_energies(short *str, int energy)
   if (energy < degen_energy) {
     degen_saddle = true;
 
-    map<short*, set<int>, setcomp>::iterator it = struct_map.find(str);
-    // collect number sets (collect minima information)
-    if (it!=struct_map.end() && it->second.size()>0) numbers.insert(it->second);
-    // collect saddle information
-    it = saddle_map.find(str);
-    if (it!=saddle_map.end()) saddles.insert(it->second.begin(), it->second.end());
+    if (!direct) {    // collect info about same level structs
+      map<short*, set<int>, setcomp>::iterator it = struct_map.find(str);
+      // collect number sets (collect minima information)
+      if (it!=struct_map.end() && it->second.size()>0) numbers.insert(it->second);
+      // collect saddle information
+      it = saddle_map.find(str);
+      if (it!=saddle_map.end()) saddles.insert(it->second.begin(), it->second.end());
+    }
   }
 
   return false;
 }
 
-set<short*, setcomp> find_equal_energy(encoded &enc, int energy, degen &deg, bool &lm)
+set<short*, setcomp> find_equal_energy(encoded &enc, int energy, degen &deg, bool direct, bool &lm)
 {
   bool (*old_funct) (short *, int) = deg.opt->f_point;
   deg.opt->f_point = equal_energies;

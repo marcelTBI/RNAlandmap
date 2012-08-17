@@ -118,7 +118,7 @@ int move_set(encoded &enc, int &deepest, degen &deg);
 bool browse_neighs(encoded &enc, int &energy, degen &deg, int &saddle_en);
 
 // returns connected set of structures with equal energy = degeneracy set.
-set<short*, setcomp> find_equal_energy(encoded &enc, int energy, degen &deg, bool &lm);
+set<short*, setcomp> find_equal_energy(encoded &enc, int energy, degen &deg, bool direct, bool &lm);
 
 // print rates to a file
 void print_rates(char *filename, double temp, int num, float *energy_barr, vector<int> &output_en);

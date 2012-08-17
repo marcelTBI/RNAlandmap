@@ -7,7 +7,7 @@
 extern "C" {
   #include "fold.h"
 }
-// ============= LOCAL ARRAYS ==================
+// ============= GLOBAL ARRAYS ================== (used also in move_set.cpp)
 
 // map structure - number of minima
 map<short*, set<int>, setcomp> struct_map;
@@ -15,18 +15,24 @@ map<short*, set<int>, setcomp> struct_map;
 // map structure - number of saddles
 map<short*, set<int>, setcomp> saddle_map;
 
+// collecting sets of minima/saddles
+set<set<int> > numbers;
+set<int> saddles;
+
+// ============= LOCAL ARRAYS ==================
+
 // set of degen structures - for quick skipping
 set<short*> struct_set;
 
 bool DEBUGG;
 map<short*, int, setcomp> debug_map; // map struct to their number
 map<int, short*> invert_map; // map num to struct in debug_map/struct_map
+map<int, int> energy_map; // map from number to energy... I know - very ugly...
 
 // global variables for landmap
 int gl_energy;
 short *gl_str;
-set<set<int> > numbers;
-set<int> saddles;
+bool gl_direct;
 
 // global set of degeneracy:
 set<short*, setcomp> degen_set;
@@ -103,7 +109,6 @@ inline bool isSeq(char *p)
   }
 }
 
-
 // function to do with every structure (always return false - to continue searching)
 bool landmap (short *str, int energy)
 {
@@ -118,9 +123,9 @@ bool landmap (short *str, int energy)
     }
 
     // find degeneracy (searching all neighbours with equal energy)
-    short *last = enc->pt;  // maybe this will fail...
+    short *last = enc->pt;
     enc->pt = str;
-    degen_set = find_equal_energy(*enc, energy, deg, degen_lm);
+    degen_set = find_equal_energy(*enc, energy, deg, gl_direct, degen_lm);
     enc->pt = last;
   }
 
@@ -227,9 +232,10 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
 
     // debrief
       // every time:
-    struct_map[gl_str];   // create empty sets
+    struct_map[gl_str];   // create map entries with empty sets
     saddle_map[gl_str];
     debug_map[gl_str] = cnt;
+    energy_map[cnt] = energy;
     invert_map[cnt] = gl_str;
       // number the structure in struct_map and saddle_map
     for (set<set<int> >::iterator it=numbers.begin(); it!=numbers.end(); it++) struct_map[gl_str].insert(it->begin(), it->end());
@@ -318,11 +324,18 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
     }
   }
 
+  // remove minima, that we are uncertain of
+  int i = map_num.size()-1;
+  while (energy_map[map_num[i]]==gl_energy) {
+    map_num.erase(i);
+    i--;
+  }
+
   return map_num.size();
 }
 
 
-void SetOpt(bool debug, bool noLP, bool shifts)
+void SetOpt(bool debug, bool noLP, bool shifts, bool direct)
 {
   // create options:
   options *opt = (options*) malloc(sizeof(options));
@@ -336,6 +349,8 @@ void SetOpt(bool debug, bool noLP, bool shifts)
   deg.opt = opt;
 
   DEBUGG = debug;
+
+  gl_direct = direct;
 }
 
 
@@ -352,9 +367,17 @@ void FreeStuff()
 // print output
 void PrintOutput(map<int, int> &map_num, vector<saddle> &output)
 {
-  // print output
+  // print minima
+  for (unsigned int i=0; i<map_num.size(); i++) {
+    int num = map_num[i];
+    printf("%5d %s %6.2f\n", num, pt_to_str(invert_map[num]).c_str(), energy_map[num]/100.0);
+  }
+
+  printf("\n");
+
+  // print saddles
   for (unsigned int i=0; i<output.size(); i++) {
-    printf("%3d %s %6.2f (", output[i].num, pt_to_str(output[i].str).c_str(), output[i].energy/100.0);
+    printf("%5d %s %6.2f (", output[i].num, pt_to_str(output[i].str).c_str(), output[i].energy/100.0);
     // print connections
     for (set<set<int> >::iterator j=output[i].locmin_conn.begin(); j!=output[i].locmin_conn.end(); j++) {
       printf("[");
