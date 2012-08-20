@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
 
 #include "RNAlandmap.h"
 
@@ -22,7 +23,7 @@ set<int> saddles;
 // ============= LOCAL ARRAYS ==================
 
 // set of degen structures - for quick skipping
-set<short*> struct_set;
+set<short*, setcomp> struct_set;
 
 bool DEBUGG;
 map<short*, int, setcomp> debug_map; // map struct to their number
@@ -33,6 +34,7 @@ map<int, int> energy_map; // map from number to energy... I know - very ugly...
 int gl_energy;
 short *gl_str;
 bool gl_direct;
+int gl_threshold;
 
 // global set of degeneracy:
 set<short*, setcomp> degen_set;
@@ -45,6 +47,7 @@ char *seq;
 
 // union-find set array
 vector<int> parent;
+unsigned int num_unions = 0;
 
 // ===================== LOCAL FUNCTIONS ====================
 
@@ -59,7 +62,14 @@ void union_set(int x, int y) {
   int u, v;
   u = find(x);
   v = find(y);
-  if (u != v) parent[u] = v;
+  if (u != v) {
+    parent[u] = v;
+    num_unions++;
+  }
+}
+
+bool connected_all() {
+  return (num_unions == parent.size()-1);
 }
 
 bool joint(int x, int y) {
@@ -129,9 +139,9 @@ bool landmap (short *str, int energy)
     enc->pt = last;
   }
 
-  // lower energy and we don't have it?
+  // lower energy and we don't have it? (threshold or filtering)
   if (struct_map.count(str)==0) {
-    if (DEBUGG) fprintf(stderr, "MISSING!\n");
+    //if (DEBUGG) fprintf(stderr, "MISSING!\n");
     return false;
   }
 
@@ -171,10 +181,9 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
 
   // read structures and do the stuff...
   char *str;
-
   int number = 0; //must be from 0 - parents array
   int cnt = 0;
-  while ((str = my_getline(stdin))) {
+  while ((str = my_getline(stdin)) && (gl_threshold > number || !connected_all())) {  // stopping condition
     float en;
     int energy;
     bool have_en = false;
@@ -201,10 +210,10 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
     }
 
     // if degeneracy have found this struct before: (keep the set small for efficiency)
-    set<short*>::iterator it;
+    set<short*, setcomp>::iterator it;
     if ((it = struct_set.find(enc->pt))!=struct_set.end()) {
       struct_set.erase(it);
-      if (DEBUGG) fprintf(stderr, "skip:  %s %4d\n", pt_to_str(enc->pt).c_str(), cnt);
+      if (DEBUGG) fprintf(stderr, "skip: %s %4d\n", pt_to_str(enc->pt).c_str(), cnt);
       debug_map[enc->pt] = cnt; // we can complete the info
       invert_map[cnt] = enc->pt;
       free(str);
@@ -227,11 +236,12 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
 
     // find neighbours and do landmap function on them
     int dunno;
-    if (DEBUGG) fprintf(stderr, "---- %d ----\n", cnt);
+    if (DEBUGG) fprintf(stderr, "---- %d ----\n base %s %6.2f\n", cnt, pt_to_str(gl_str).c_str(), gl_energy/100.0);
     browse_neighs(*enc, energy, deg, dunno);
 
     // debrief
       // every time:
+    if (DEBUGG && struct_map.count(gl_str)>0) fprintf(stderr, "WRONG: %s\n", pt_to_str(gl_str).c_str());
     struct_map[gl_str];   // create map entries with empty sets
     saddle_map[gl_str];
     debug_map[gl_str] = cnt;
@@ -243,10 +253,13 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
 
       // minimum
     if (numbers.size() == 0) {
-      enlarge_parent();
-      map_num[number]=cnt;
-      struct_map[gl_str].insert(number);
-      number++;
+      // must be under threshold to add a new minimum
+      if (gl_threshold == 0 || gl_threshold > number) {
+        enlarge_parent();
+        map_num[number]=cnt;
+        struct_map[gl_str].insert(number);
+        number++;
+      }
     } else {
       // maybe saddle point - more numbers joining
       if (numbers.size()>1) {
@@ -296,7 +309,7 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
       degen_set.erase(degen_it);
       for (set<short*, setcomp>::iterator it=degen_set.begin(); it!=degen_set.end(); it++) {
         // assign, that we have done this structure
-        //fprintf(stderr, "insert %s %4d\n", pt_to_str(*it).c_str(), cnt);
+        if (DEBUGG) fprintf(stderr, "  deg %s %4d\n", pt_to_str(*it).c_str(), cnt);
         //if (struct_map.find(*it)!=struct_map.end()) fprintf(stderr, "wrong: %s == \n %4d: %s\n", pt_to_str(struct_map.find(*it)->first).c_str(), cnt, pt_to_str(*it).c_str());
         struct_map[*it] = struct_map[gl_str]; // allocated memory is now on struct_map to free!!
         struct_set.insert(*it);
@@ -308,6 +321,8 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
     free(str);
     cnt++;
   }
+
+  if (str) free(str);
 
   if (DEBUGG) fprintf(stderr, "\n");
 
@@ -326,7 +341,7 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
 
   // remove minima, that we are uncertain of
   int i = map_num.size()-1;
-  while (energy_map[map_num[i]]==gl_energy) {
+  while (i>=0 && energy_map[map_num[i]]==gl_energy) {
     map_num.erase(i);
     i--;
   }
@@ -335,22 +350,26 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
 }
 
 
-void SetOpt(bool debug, bool noLP, bool shifts, bool direct)
+void SetOpt(gengetopt_args_info &args_info)
 {
   // create options:
   options *opt = (options*) malloc(sizeof(options));
   opt->verbose_lvl = 0;
-  opt->noLP = noLP;
-  opt->shift = shifts;
+  opt->noLP = args_info.noLP_flag;
+  opt->shift = args_info.shift_flag;
   opt->first = false;
   opt->EOM = true;
   opt->f_point = landmap;
 
   deg.opt = opt;
 
-  DEBUGG = debug;
+  DEBUGG = args_info.debug_flag;
 
-  gl_direct = direct;
+  gl_direct = args_info.direct_flag;
+
+  gl_threshold = args_info.threshold_arg;
+
+  if (gl_threshold==0) gl_threshold = INT_MAX;
 }
 
 

@@ -22,7 +22,7 @@ struct saddle {
 };
 
 // main functions
-void SetOpt(bool debug, bool noLP, bool shifts, bool direct);  // sets options
+void SetOpt(gengetopt_args_info &args_info);  // sets options
 int DoTheJob(map<int, int> &map_num, vector<saddle> &output);  // main job
 void FreeStuff();
 

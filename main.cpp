@@ -27,6 +27,12 @@ int main(int argc, char **argv)
     exit(EXIT_FAILURE);
   }
 
+  // check arguments
+  if (args_info.threshold_given && args_info.threshold_arg<0) {
+    args_info.threshold_arg=0;
+    fprintf(stderr, "Warning: --threshold(-n) set to negative -- clipping to 0.");
+  }
+
   // output;
   vector<saddle> output;
 
@@ -34,7 +40,7 @@ int main(int argc, char **argv)
   map<int, int> map_num;
 
   // set options
-  SetOpt(args_info.debug_flag, args_info.noLP_flag, args_info.shift_flag, args_info.direct_flag);
+  SetOpt(args_info);
 
   // main function
   DoTheJob(map_num, output);

@@ -178,9 +178,15 @@ int update_deepest(encoded &enc, int &deepest, short *min_pt, degen &deg, bool v
     tmp_en = energy_of_structure_pt(enc.seq, enc.pt, enc.s0, enc.s1, 0);
   }
 
+  // our function
   bool res = 0;
-  if (deg.opt->f_point) res = deg.opt->f_point(enc.pt, tmp_en);
+  if (deg.opt->f_point) {
+    res = deg.opt->f_point(enc.pt, tmp_en);
+    undo_moves(enc);
+    return res;
+  }
 
+  // default behaviour
   if (tmp_en <= deepest) {
     deepest = tmp_en;
     copy_arr(min_pt, enc.pt);

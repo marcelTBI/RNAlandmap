@@ -22,3 +22,5 @@ option "landmark"						l "Generate landmark instead landmap (without saddles)" f
 option "dot"                - "Use dot instead of neato for graph plotting" flag off
 
 option "direct"             - "Use direct saddles instead classic saddles (direct saddles are reached from both LM via true uphill walks - moves on same energy are not allowed)" flag off
+
+option "threshold"          n "Maximal nuber of LM to find (0 means to find all) Warning: landmap must not be a subsection of a complete graph, because of ignored LM" int default="100" no
