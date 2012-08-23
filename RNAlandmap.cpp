@@ -37,6 +37,7 @@ int gl_threshold;
 // global set of degeneracy:
 set<short*, setcomp> degen_set;
 bool degen_lm;
+bool gl_degen;
 
 // global options
 encoded *enc;
@@ -131,10 +132,14 @@ bool landmap (short *str, int energy)
     }
 
     // find degeneracy (searching all neighbours with equal energy)
-    short *last = enc->pt;
-    enc->pt = str;
-    degen_set = find_equal_energy(*enc, energy, deg, gl_direct, degen_lm);
-    enc->pt = last;
+      // do only once per struct
+    if (!gl_degen) {
+      gl_degen = true;
+      short *last = enc->pt;
+      enc->pt = str;
+      degen_set = find_equal_energy(*enc, energy, deg, gl_direct, degen_lm);
+      enc->pt = last;
+    }
   }
 
   // lower energy and we don't have it? (threshold or filtering)
@@ -211,6 +216,7 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
     if ((it = struct_set.find(enc->pt))!=struct_set.end()) {
       struct_set.erase(it);
       if (DEBUGG) fprintf(stderr, "skip: %s %4d\n", pt_to_str(enc->pt).c_str(), cnt);
+      if (struct_map.count(enc->pt)==0) fprintf(stderr, "WRONG: %s\n", pt_to_str(enc->pt).c_str());
       struct_map[enc->pt].debug_num = cnt; // we can complete the info
       en_struct &es = invert_map[cnt]; // and also invert_map
       es.str = enc->pt;
@@ -232,6 +238,7 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
     degen_lm = false;
     gl_energy = energy;
     gl_str = allocopy(enc->pt);
+    gl_degen = false;
 
     // find neighbours and do landmap function on them
     int dunno;
@@ -255,7 +262,7 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
       // minimum
     if (numbers.size() == 0) {
       // must be under threshold to add a new minimum
-      if (gl_threshold == 0 || gl_threshold > number) {
+      if (gl_threshold > number) {
         enlarge_parent();
         map_num[number]=cnt;
         si.LM_nums.insert(number);
@@ -337,6 +344,12 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
         // assign, that we have done this structure
         if (DEBUGG) fprintf(stderr, "  deg %s %4d\n", pt_to_str(*it).c_str(), cnt);
         //if (struct_map.find(*it)!=struct_map.end()) fprintf(stderr, "wrong: %s == \n %4d: %s\n", pt_to_str(struct_map.find(*it)->first).c_str(), cnt, pt_to_str(*it).c_str());
+        /*unordered_map<short*, struct_info, hash_fncts, hash_eq>::iterator mit;
+        mit = struct_map.find(*it);
+        if (mit!=struct_map.end() && DEBUGG) {
+          fprintf(stderr, "wrong: %s == \n %4d: %s\n", pt_to_str(struct_map.find(*it)->first).c_str(), cnt, pt_to_str(*it).c_str());
+
+        }*/
         struct_info &si2 = struct_map[*it];
         si2.LM_nums = si.LM_nums; // allocated memory is now on struct_map to free!!
         si2.saddle_nums = si.saddle_nums;
@@ -397,7 +410,6 @@ void SetOpt(gengetopt_args_info &args_info)
   gl_direct = args_info.direct_flag;
 
   gl_threshold = args_info.threshold_arg;
-
   if (gl_threshold==0) gl_threshold = INT_MAX;
 }
 
@@ -407,6 +419,7 @@ void FreeStuff()
   unordered_map<short*, struct_info, hash_fncts, hash_eq>::iterator sm_it;
   for (sm_it = struct_map.begin(); sm_it!=struct_map.end(); sm_it++) free(sm_it->first);
   struct_map.clear();
+  invert_map.clear();
   free_encode(enc);
   free(deg.opt);
   free(seq);

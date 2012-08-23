@@ -36,7 +36,7 @@ int main(int argc, char **argv)
   // output;
   vector<saddle> output;
 
-  // map number -> number of struct
+  // map number -> number of struct (for minima)
   map<int, int> map_num;
 
   // set options

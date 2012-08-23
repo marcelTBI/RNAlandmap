@@ -600,7 +600,10 @@ set<short*, setcomp> find_equal_energy(encoded &enc, int energy, degen &deg, boo
   degen_energy = energy;
   degen_saddle = false;
   degen_done.clear();
+  degen_undone.clear();
   degen_undone.insert(allocopy(enc.pt));
+
+  //fprintf(stderr, " ins: %s\n", pt_to_str(enc.pt).c_str() );
 
 
   while (degen_undone.size()!=0) {
