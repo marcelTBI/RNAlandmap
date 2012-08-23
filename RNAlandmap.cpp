@@ -4,17 +4,16 @@
 #include <limits.h>
 
 #include "RNAlandmap.h"
+#include "hash_util.h"
 
 extern "C" {
   #include "fold.h"
 }
-// ============= GLOBAL ARRAYS ================== (used also in move_set.cpp)
 
-// map structure - number of minima
-map<short*, set<int>, setcomp> struct_map;
+// ============= GLOBAL ARRAYS ================= (used also in move_set.cpp)
 
-// map structure - number of saddles
-map<short*, set<int>, setcomp> saddle_map;
+// map structure - info about the structure
+unordered_map<short*, struct_info, hash_fncts, hash_eq> struct_map (HASHSIZE);
 
 // collecting sets of minima/saddles
 set<set<int> > numbers;
@@ -26,9 +25,8 @@ set<int> saddles;
 set<short*, setcomp> struct_set;
 
 bool DEBUGG;
-map<short*, int, setcomp> debug_map; // map struct to their number
-map<int, short*> invert_map; // map num to struct in debug_map/struct_map
-map<int, int> energy_map; // map from number to energy... I know - very ugly...
+//map<short*, int, setcomp> debug_map; // map struct to their number
+unordered_map<int, en_struct> invert_map; // map num to struct in debug_map/struct_map
 
 // global variables for landmap
 int gl_energy;
@@ -123,7 +121,7 @@ inline bool isSeq(char *p)
 bool landmap (short *str, int energy)
 {
   if (DEBUGG) fprintf (stderr, "tryin %s", pt_to_str(str).c_str());
-  if (DEBUGG) fprintf (stderr, " %d\n", debug_map.count(str)>0 ? debug_map[str]: -1);
+  if (DEBUGG) fprintf (stderr, " %d\n", struct_map.count(str)>0 ? struct_map[str].debug_num: -1);
 
   if (energy > gl_energy) return false;
   if (energy == gl_energy) {
@@ -146,20 +144,19 @@ bool landmap (short *str, int energy)
   }
 
   set<int>::iterator set_it;
-  set<int> set = struct_map[str];
+  struct_info si = struct_map[str];
 
   //fprintf (stderr, "doing %s", pt_to_str(str).c_str());
-  if (DEBUGG) fprintf(stderr, "%2d: ", debug_map[str]);
-  if (DEBUGG) for (set_it=set.begin(); set_it!=set.end(); set_it++) fprintf(stderr, " %d", *set_it);
+  if (DEBUGG) fprintf(stderr, "%2d: ", si.debug_num);
+  if (DEBUGG) for (set_it=si.LM_nums.begin(); set_it!=si.LM_nums.end(); set_it++) fprintf(stderr, " %d", *set_it);
   if (DEBUGG) fprintf(stderr, "\n");
 
 
   // collect number sets (collect minima information)
-  if (set.size()>0) numbers.insert(set);
+  if (si.LM_nums.size()>0) numbers.insert(si.LM_nums);
 
   // collect saddle information
-  set = saddle_map[str];
-  saddles.insert(set.begin(), set.end());
+  saddles.insert(si.saddle_nums.begin(), si.saddle_nums.end());
 
   return false;
 }
@@ -214,8 +211,10 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
     if ((it = struct_set.find(enc->pt))!=struct_set.end()) {
       struct_set.erase(it);
       if (DEBUGG) fprintf(stderr, "skip: %s %4d\n", pt_to_str(enc->pt).c_str(), cnt);
-      debug_map[enc->pt] = cnt; // we can complete the info
-      invert_map[cnt] = enc->pt;
+      struct_map[enc->pt].debug_num = cnt; // we can complete the info
+      en_struct &es = invert_map[cnt]; // and also invert_map
+      es.str = enc->pt;
+      es.energy = gl_energy;
       free(str);
       cnt++;
       continue;
@@ -242,14 +241,16 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
     // debrief
       // every time:
     if (DEBUGG && struct_map.count(gl_str)>0) fprintf(stderr, "WRONG: %s\n", pt_to_str(gl_str).c_str());
-    struct_map[gl_str];   // create map entries with empty sets
-    saddle_map[gl_str];
-    debug_map[gl_str] = cnt;
-    energy_map[cnt] = energy;
-    invert_map[cnt] = gl_str;
+    struct_info &si = struct_map[gl_str];
+    si.debug_num = cnt;   // create map entries with empty sets
+    //saddle_map[gl_str];
+    //debug_map[gl_str] = cnt;
+    en_struct &es = invert_map[cnt];
+    es.energy = energy;
+    es.str = gl_str;
       // number the structure in struct_map and saddle_map
-    for (set<set<int> >::iterator it=numbers.begin(); it!=numbers.end(); it++) struct_map[gl_str].insert(it->begin(), it->end());
-    saddle_map[gl_str].insert(saddles.begin(), saddles.end());
+    for (set<set<int> >::iterator it=numbers.begin(); it!=numbers.end(); it++) si.LM_nums.insert(it->begin(), it->end());
+    si.saddle_nums.insert(saddles.begin(), saddles.end());
 
       // minimum
     if (numbers.size() == 0) {
@@ -257,7 +258,7 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
       if (gl_threshold == 0 || gl_threshold > number) {
         enlarge_parent();
         map_num[number]=cnt;
-        struct_map[gl_str].insert(number);
+        si.LM_nums.insert(number);
         number++;
       }
     } else {
@@ -271,6 +272,31 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
 
         vector<std::pair<int, int> > to_union;
 
+        // refine numbers:
+        set<int> tmp;
+        do {
+          tmp.clear();
+          for (set<set<int> >::iterator it=numbers.begin(); it!=numbers.end(); it++) {
+            set<set<int> >::iterator it2=it;
+            it2++;
+            for (; it2!=numbers.end(); it2++) {
+              int first = *(it->begin());
+              int second = *(it2->begin());
+              if (joint(first, second)) {
+                tmp = *it;
+                tmp.insert(it2->begin(), it2->end());
+                numbers.erase(it);
+                numbers.erase(it2);
+                break;
+              }
+            }
+            if (tmp.size()!=0) break;
+          }
+          if (tmp.size()!=0) {
+            numbers.insert(tmp);
+          }
+        } while (tmp.size()!=0);
+
         // crawl through sets of numbers, check if they are joint yet
         for (set<set<int> >::iterator it=numbers.begin(); it!=numbers.end(); it++) {
           set<set<int> >::iterator it2=it;
@@ -283,7 +309,7 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
               to_union.push_back(make_pair(first, second));
 
               // found saddle - fill info
-              sad.saddle_conn = saddle_map[gl_str]; // saddle information
+              sad.saddle_conn = si.saddle_nums; // saddle information
               sad.locmin_conn.insert(*it);      // add locmin info
               sad.locmin_conn.insert(*it2);
             }
@@ -291,7 +317,7 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
         }
         // number the saddle and store it
         if (to_union.size()>0) {
-          saddle_map[gl_str].insert(cnt);
+          si.saddle_nums.insert(cnt);
           output.push_back(sad);
         }
         // union things
@@ -311,10 +337,13 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
         // assign, that we have done this structure
         if (DEBUGG) fprintf(stderr, "  deg %s %4d\n", pt_to_str(*it).c_str(), cnt);
         //if (struct_map.find(*it)!=struct_map.end()) fprintf(stderr, "wrong: %s == \n %4d: %s\n", pt_to_str(struct_map.find(*it)->first).c_str(), cnt, pt_to_str(*it).c_str());
-        struct_map[*it] = struct_map[gl_str]; // allocated memory is now on struct_map to free!!
+        struct_info &si2 = struct_map[*it];
+        si2.LM_nums = si.LM_nums; // allocated memory is now on struct_map to free!!
+        si2.saddle_nums = si.saddle_nums;
+        si2.debug_num = -1;  // we dont know its number
+
+        // for quicker access
         struct_set.insert(*it);
-        saddle_map[*it] = saddle_map[gl_str];
-        debug_map[*it] = -1; // we dont know its number -- but we have to allocate space
         //invert_map[?] = *it;
       }
     }
@@ -329,10 +358,10 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
   // print debug saddle info
   if (DEBUGG) {
     fprintf(stderr, "assigned saddles:\n");
-    for (map<short*, set<int>, setcomp>::iterator it=saddle_map.begin(); it!=saddle_map.end(); it++) {
-      if (it->second.size()==0) continue;
-      fprintf(stderr, "%d:", debug_map[it->first]);
-      for (set<int>::iterator it2=it->second.begin(); it2!=it->second.end(); it2++) {
+    for (unordered_map<short*, struct_info, hash_fncts, hash_eq>::iterator it=struct_map.begin(); it!=struct_map.end(); it++) {
+      if (it->second.saddle_nums.size()==0) continue;
+      fprintf(stderr, "%d:", it->second.debug_num);
+      for (set<int>::iterator it2=it->second.saddle_nums.begin(); it2!=it->second.saddle_nums.end(); it2++) {
         fprintf(stderr, " %d", *it2);
       }
       fprintf(stderr, "\n");
@@ -341,7 +370,7 @@ int DoTheJob(map<int, int> &map_num, vector<saddle> &output)
 
   // remove minima, that we are uncertain of
   int i = map_num.size()-1;
-  while (i>=0 && energy_map[map_num[i]]==gl_energy) {
+  while (i>=0 && invert_map[map_num[i]].energy==gl_energy) {
     map_num.erase(i);
     i--;
   }
@@ -375,7 +404,7 @@ void SetOpt(gengetopt_args_info &args_info)
 
 void FreeStuff()
 {
-  map<short*, set<int>, setcomp>::iterator sm_it;
+  unordered_map<short*, struct_info, hash_fncts, hash_eq>::iterator sm_it;
   for (sm_it = struct_map.begin(); sm_it!=struct_map.end(); sm_it++) free(sm_it->first);
   struct_map.clear();
   free_encode(enc);
@@ -389,7 +418,7 @@ void PrintOutput(map<int, int> &map_num, vector<saddle> &output)
   // print minima
   for (unsigned int i=0; i<map_num.size(); i++) {
     int num = map_num[i];
-    printf("%5d %s %6.2f\n", num, pt_to_str(invert_map[num]).c_str(), energy_map[num]/100.0);
+    printf("%5d %s %6.2f\n", num, pt_to_str(invert_map[num].str).c_str(), invert_map[num].energy/100.0);
   }
 
   printf("\n");
@@ -410,7 +439,7 @@ void PrintOutput(map<int, int> &map_num, vector<saddle> &output)
     // print saddle connections
     for (set<int>::iterator j=output[i].saddle_conn.begin(); j!=output[i].saddle_conn.end(); j++) {
       if (j!=output[i].saddle_conn.begin()) printf(" ");
-      printf("%d", map_num[*j]);
+      printf("%d", *j);
     }
     printf("}\n");
   }

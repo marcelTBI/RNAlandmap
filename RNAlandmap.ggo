@@ -19,7 +19,7 @@ option "shift"							- "Assume also shift moves (in addition to insertion and de
 
 option "landmark"						l "Generate landmark instead landmap (without saddles)" flag off
 
-option "dot"                - "Use dot instead of neato for graph plotting" flag off
+option "dot"                - "Use dot instead of neato for graph plotting" flag on
 
 option "direct"             - "Use direct saddles instead classic saddles (direct saddles are reached from both LM via true uphill walks - moves on same energy are not allowed)" flag off
 

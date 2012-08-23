@@ -13,6 +13,8 @@ extern "C" {
 }
 
 #include "move_set.h"
+#include "RNAlandmap.h"
+#include "hash_util.h"
 
 // ############################## DECLARATION #####################################
 // private functions & declarations
@@ -553,8 +555,7 @@ bool direct;
   // global things from RNAlandmap.cpp
 extern set<set<int> > numbers;
 extern set<int> saddles;
-extern map<short*, set<int>, setcomp> struct_map;
-extern map<short*, set<int>, setcomp> saddle_map;
+extern unordered_map<short*, struct_info, hash_fncts, hash_eq> struct_map;
 
 bool equal_energies(short *str, int energy)
 {
@@ -568,12 +569,13 @@ bool equal_energies(short *str, int energy)
     degen_saddle = true;
 
     if (!direct) {    // collect info about same level structs
-      map<short*, set<int>, setcomp>::iterator it = struct_map.find(str);
+      unordered_map<short*, struct_info, hash_fncts, hash_eq>::iterator it = struct_map.find(str);
       // collect number sets (collect minima information)
-      if (it!=struct_map.end() && it->second.size()>0) numbers.insert(it->second);
-      // collect saddle information
-      it = saddle_map.find(str);
-      if (it!=saddle_map.end()) saddles.insert(it->second.begin(), it->second.end());
+      if (it!=struct_map.end()) {
+        if (it->second.LM_nums.size()>0) numbers.insert(it->second.LM_nums);
+        // collect saddle information
+        saddles.insert(it->second.saddle_nums.begin(), it->second.saddle_nums.end());
+      }
     }
   }
 
