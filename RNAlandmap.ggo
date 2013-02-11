@@ -18,6 +18,8 @@ option "noLP"								- "Process structures without lonely pairs (helices of leng
 option "shift"							- "Assume also shift moves (in addition to insertion and deletions)." flag off
 
 option "landmark"						l "Generate landmark instead landmap (without saddles)" flag off
+option "str-numbers"        - "Output numbers of structures (not incremental numbers)" flag off
+option "degeneracy"         - "Study degeneracy (experimental)" flag off
 
 option "dot"                - "Use dot instead of neato for graph plotting" flag on
 

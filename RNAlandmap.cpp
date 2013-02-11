@@ -33,6 +33,8 @@ int gl_energy;
 short *gl_str;
 bool gl_direct;
 int gl_threshold;
+bool gl_str_numbers;
+bool gl_degeneracy;
 
 // global set of degeneracy:
 set<short*, setcomp> degen_set;
@@ -118,6 +120,9 @@ inline bool isSeq(char *p)
   }
 }
 
+// for storing info for degeneracy statistics
+map<int, int> degen_stats;
+
 // function to do with every structure (always return false - to continue searching)
 bool landmap (short *str, int energy)
 {
@@ -139,6 +144,9 @@ bool landmap (short *str, int energy)
       enc->pt = str;
       degen_set = find_equal_energy(*enc, energy, deg, gl_direct, degen_lm);
       enc->pt = last;
+      if (gl_degeneracy) {
+        degen_stats[(int)degen_set.size()] ++;
+      }
     }
   }
 
@@ -410,6 +418,8 @@ void SetOpt(gengetopt_args_info &args_info)
   gl_direct = args_info.direct_flag;
 
   gl_threshold = args_info.threshold_arg;
+  gl_str_numbers = args_info.str_numbers_flag;
+  gl_degeneracy = args_info.degeneracy_flag;
   if (gl_threshold==0) gl_threshold = INT_MAX;
 }
 
@@ -428,23 +438,38 @@ void FreeStuff()
 // print output
 void PrintOutput(map<int, int> &map_num, vector<saddle> &output)
 {
+  // print statistics about degeneracy to stderr
+  if (gl_degeneracy) {
+    for (map<int, int>::iterator it = degen_stats.begin(); it!=degen_stats.end(); it++) {
+      fprintf(stderr, "%5d -degeneracy observed %5d times\n", it->first, it->second);
+    }
+  }
+
+
   // print minima
   for (unsigned int i=0; i<map_num.size(); i++) {
     int num = map_num[i];
-    printf("%5d %s %6.2f\n", num, pt_to_str(invert_map[num].str).c_str(), invert_map[num].energy/100.0);
+    printf("%5d %s %6.2f\n", (gl_str_numbers?num:i+1), pt_to_str(invert_map[num].str).c_str(), invert_map[num].energy/100.0);
   }
 
   printf("\n");
 
+  map<int, int> str_to_saddle;
+  if (!gl_str_numbers) {
+    for (unsigned int i=0; i<output.size(); i++) {
+      str_to_saddle[output[i].num] = i;
+    }
+  }
+
   // print saddles
   for (unsigned int i=0; i<output.size(); i++) {
-    printf("%5d %s %6.2f (", output[i].num, pt_to_str(output[i].str).c_str(), output[i].energy/100.0);
+    printf("%5d %s %6.2f (", (gl_str_numbers?output[i].num:i+1), pt_to_str(output[i].str).c_str(), output[i].energy/100.0);
     // print connections
     for (set<set<int> >::iterator j=output[i].locmin_conn.begin(); j!=output[i].locmin_conn.end(); j++) {
       printf("[");
       for (set<int>::iterator k=j->begin(); k!=j->end(); k++) {
         if (k!=j->begin()) printf(" ");
-        printf("%d", map_num[*k]);
+        printf("%d", (gl_str_numbers?map_num[*k]:*k+1));
       }
       printf("]");
     }
@@ -452,7 +477,7 @@ void PrintOutput(map<int, int> &map_num, vector<saddle> &output)
     // print saddle connections
     for (set<int>::iterator j=output[i].saddle_conn.begin(); j!=output[i].saddle_conn.end(); j++) {
       if (j!=output[i].saddle_conn.begin()) printf(" ");
-      printf("%d", *j);
+      printf("%d", (gl_str_numbers?*j:str_to_saddle[*j]+1));
     }
     printf("}\n");
   }
@@ -463,14 +488,23 @@ void PrintDot(gengetopt_args_info &args_info, map<int, int> &map_num, vector<sad
   FILE *dot;
   int number = map_num.size();
   dot = fopen(args_info.name_dot_arg, "w");
+
+
+  map<int, int> str_to_saddle;
+  if (!gl_str_numbers) {
+    for (unsigned int i=0; i<output.size(); i++) {
+      str_to_saddle[output[i].num] = i;
+    }
+  }
+
+
   if (dot) {
     if (args_info.landmark_flag) {  // print landmark
       fprintf(dot, "Graph G {\n\tnode [width=0.1, height=0.1, shape=circle];\n");
       //nodes:
       for (int i=0; i<number; i++) {
-        // print label also with number in barrier tree?
-        if (1) fprintf(dot, "\"%d\" [label=\"%d(%d)\"]\n", map_num[i], map_num[i], i+1);
-        else fprintf(dot, "\"%d\" [label=\"%d\"]\n", map_num[i], map_num[i]);
+        if (gl_str_numbers) fprintf(dot, "\"%d\" [label=\"%d(%d)\"]\n", map_num[i], map_num[i], i+1);
+        else fprintf(dot, "\"%d\" [label=\"%d(%d)\"]\n", i+1, i+1, map_num[i]);
       }
       // edges (fuck me...)
       for (unsigned int i=0; i<output.size(); i++) {
@@ -479,7 +513,8 @@ void PrintDot(gengetopt_args_info &args_info, map<int, int> &map_num, vector<sad
           for (it2++; it2!=output[i].locmin_conn.end(); it2++) {
             for (set<int>::iterator in=it->begin(); in!=it->end(); in++) {
               for (set<int>::iterator in2=it2->begin(); in2!=it2->end(); in2++) {
-                fprintf(dot, "\"%d\" -- \"%d\" [label=\"%.2f\"]\n", map_num[*in], map_num[*in2], output[i].energy/100.0);
+                if (gl_str_numbers) fprintf(dot, "\"%d\" -- \"%d\" [label=\"%.2f\"]\n", map_num[*in], map_num[*in2], output[i].energy/100.0);
+                else fprintf(dot, "\"%d\" -- \"%d\" [label=\"%.2f\"]\n", *in+1, *in2+1, output[i].energy/100.0);
               }
             }
           }
@@ -494,14 +529,14 @@ void PrintDot(gengetopt_args_info &args_info, map<int, int> &map_num, vector<sad
       //nodes (minima):
       fprintf(dot, "/*nodes - minima*/\n");
       for (int i=0; i<number; i++) {
-        // print label also with number in barrier tree?
-        if (1) fprintf(dot, "\"%d\" [label=\"%d(%d)\"]\n", map_num[i], map_num[i], i+1);
-        else fprintf(dot, "\"%d\" [label=\"%d\"]\n", map_num[i], map_num[i]);
+        if (gl_str_numbers) fprintf(dot, "\"%d\" [label=\"%d(%d)\"]\n", map_num[i], map_num[i], i+1);
+        else fprintf(dot, "\"%d\" [label=\"%d(%d)\"]\n", i+1, i+1, map_num[i]);
       }
       //nodes (saddles):
       fprintf(dot, "/*nodes - saddles*/\n");
       for (unsigned int i=0; i<output.size(); i++) {
-        fprintf(dot, "\"S%d\" [label=\"S%d\", color=\"0.0 0.0 %.2f\", fontcolor=\"0.0 0.0 %.2f\"]\n", output[i].num, output[i].num, color, color);
+        if (gl_str_numbers) fprintf(dot, "\"S%d\" [label=\"S%d\", color=\"0.0 0.0 %.2f\", fontcolor=\"0.0 0.0 %.2f\"]\n", output[i].num, output[i].num, color, color);
+        else fprintf(dot, "\"S%d\" [label=\"S%d\", color=\"0.0 0.0 %.2f\", fontcolor=\"0.0 0.0 %.2f\"]\n", i+1, i+1, color, color);
       }
 
       //edges (landmark = minima to minima)
@@ -512,7 +547,8 @@ void PrintDot(gengetopt_args_info &args_info, map<int, int> &map_num, vector<sad
           for (it2++; it2!=output[i].locmin_conn.end(); it2++) {
             for (set<int>::iterator in=it->begin(); in!=it->end(); in++) {
               for (set<int>::iterator in2=it2->begin(); in2!=it2->end(); in2++) {
-                fprintf(dot, "\"%d\" -- \"%d\" [label=\"%.2f\"]\n", map_num[*in], map_num[*in2], output[i].energy/100.0);
+                if (gl_str_numbers) fprintf(dot, "\"%d\" -- \"%d\" [label=\"%.2f\"]\n", map_num[*in], map_num[*in2], output[i].energy/100.0);
+                else fprintf(dot, "\"%d\" -- \"%d\" [label=\"%.2f\"]\n", *in+1, *in2+1, output[i].energy/100.0);
               }
             }
           }
@@ -523,7 +559,8 @@ void PrintDot(gengetopt_args_info &args_info, map<int, int> &map_num, vector<sad
       for (unsigned int i=0; i<output.size(); i++) {
         for (set<set<int> >::iterator it=output[i].locmin_conn.begin(); it!=output[i].locmin_conn.end(); it++) {
           for (set<int>::iterator in=it->begin(); in!=it->end(); in++) {
-            fprintf(dot, "\"S%d\" -- \"%d\" [color=\"0.0 0.0 %.2f\", fontcolor=\"0.0 0.0 %.2f\"]\n", output[i].num, map_num[*in], color, color);
+            if (gl_str_numbers) fprintf(dot, "\"S%d\" -- \"%d\" [color=\"0.0 0.0 %.2f\", fontcolor=\"0.0 0.0 %.2f\"]\n", output[i].num, map_num[*in], color, color);
+            else fprintf(dot, "\"S%d\" -- \"%d\" [color=\"0.0 0.0 %.2f\", fontcolor=\"0.0 0.0 %.2f\"]\n", i+1, *in+1, color, color);
           }
         }
       }
@@ -531,7 +568,8 @@ void PrintDot(gengetopt_args_info &args_info, map<int, int> &map_num, vector<sad
       fprintf(dot, "/*edges - saddles to saddles*/\n");
       for (unsigned int i=0; i<output.size(); i++) {
         for (set<int>::iterator it=output[i].saddle_conn.begin(); it!=output[i].saddle_conn.end(); it++) {
-          fprintf(dot, "\"S%d\" -- \"S%d\" [color=\"0.0 0.0 %.2f\", fontcolor=\"0.0 0.0 %.2f\"]\n", *it, output[i].num, color, color);
+          if (gl_str_numbers) fprintf(dot, "\"S%d\" -- \"S%d\" [color=\"0.0 0.0 %.2f\", fontcolor=\"0.0 0.0 %.2f\"]\n", *it, output[i].num, color, color);
+          else fprintf(dot, "\"S%d\" -- \"S%d\" [color=\"0.0 0.0 %.2f\", fontcolor=\"0.0 0.0 %.2f\"]\n", str_to_saddle[*it], i+1, color, color);
         }
       }
 

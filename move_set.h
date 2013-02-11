@@ -34,8 +34,8 @@ struct setcomp {
     int i=1;
     char l=0,r=0;
     while (i<=lhs[0]) {
-      l = (lhs[i]==0?'.':(lhs[i]<lhs[lhs[i]]?'(':')'));
-      r = (rhs[i]==0?'.':(rhs[i]<rhs[rhs[i]]?'(':')'));
+      l = (lhs[i]==0?'.':(lhs[i]<lhs[lhs[i]]?')':'('));
+      r = (rhs[i]==0?'.':(rhs[i]<rhs[rhs[i]]?')':'('));
       if (l != r) break;
       i++;
     }
