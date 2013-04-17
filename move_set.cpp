@@ -560,9 +560,9 @@ extern unordered_map<short*, struct_info, hash_fncts, hash_eq> struct_map;
 bool equal_energies(short *str, int energy)
 {
   if (energy == degen_energy) {
-    //fprintf(stderr, "inserting(undn): %s\n", pt_to_str(str).c_str());
     if (degen_done.count(str)==0 && degen_undone.count(str)==0) {
       degen_undone.insert(allocopy(str));
+      //if (DEBUGG) fprintf(stderr, "inserting(undn): %s\n", pt_to_str(str).c_str());
     }
   }
   if (energy < degen_energy) {
@@ -612,6 +612,7 @@ set<short*, setcomp> find_equal_energy(encoded &enc, int energy, degen &deg, boo
     short *last = enc.pt;
     enc.pt = *degen_undone.begin();
     degen_undone.erase(degen_undone.begin());
+
 
     // move it
     insertions(enc, energy, min_pt, deg, deg.opt->verbose_lvl>3);
